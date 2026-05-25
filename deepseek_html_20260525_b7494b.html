@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>CTF: Hunt for Data Staging | Sysmon Event 11</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', 'Fira Code', system-ui, monospace; }
+    body {
+      background: radial-gradient(circle at 20% 30%, #0b1a2f, #030712);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem; margin: 0;
+    }
+    .container {
+      max-width: 1150px; width: 100%; background: rgba(12, 22, 38, 0.85);
+      backdrop-filter: blur(24px); border: 1px solid rgba(255, 140, 0, 0.3);
+      box-shadow: 0 25px 50px rgba(255, 100, 0, 0.2); border-radius: 2.8rem;
+      padding: 2rem; color: #d4e2ff;
+    }
+    h1 { font-size: 2.3rem; font-weight: 700; text-align: center; background: linear-gradient(135deg, #ff9f4b, #ff5e00); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.4rem; letter-spacing: 1px; }
+    .subtitle { text-align: center; color: #b0c7e0; margin-bottom: 1.8rem; border-bottom: 1px dashed #3f4d63; padding-bottom: 1rem; font-style: italic; }
+    .panel { background: rgba(8, 18, 33, 0.7); backdrop-filter: blur(12px); border-radius: 1.8rem; padding: 1.7rem; border: 1px solid #2d405b; margin-bottom: 1.8rem; }
+    .hidden { display: none !important; }
+    input, button { background: #152238; border: 1px solid #3e5570; border-radius: 2rem; padding: 0.7rem 1.3rem; color: #eaf2ff; font-weight: 500; outline: none; font-size: 0.9rem; }
+    input:focus { border-color: #ff8c42; box-shadow: 0 0 14px #ff6a1a; }
+    button { background: #1f3350; border-color: #f07b3b; cursor: pointer; font-weight: bold; display: inline-flex; align-items: center; gap: 0.3rem; }
+    button:hover { background: #2c456b; border-color: #ffaa5e; box-shadow: 0 0 18px #ff7730; }
+    .task-card { background: #0a1422; border-left: 6px solid #ff8c42; padding: 1.2rem; border-radius: 1.3rem; margin: 1.2rem 0; animation: fadeIn 0.35s ease; }
+    @keyframes fadeIn { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
+    .log-line { background: #020b17; border: 1px solid #2a3d59; padding: 0.5rem 1rem; border-radius: 0.6rem; margin: 0.4rem 0; font-family: 'Fira Code', monospace; font-size: 0.78rem; white-space: pre-wrap; color: #cbd9ff; }
+    .badge { background: #2b3d5c; padding: 0.2rem 0.9rem; border-radius: 20px; font-size: 0.8rem; }
+    .heatmap-grid { display: flex; flex-wrap: wrap; gap: 3px; margin: 0.8rem 0; padding: 0.5rem; background: #020b17; border-radius: 0.8rem; border: 1px solid #2a3d59; }
+    .heat-cell { width: 24px; height: 24px; border-radius: 3px; transition: 0.3s; }
+    .heat-cell:hover { transform: scale(1.3); z-index: 2; box-shadow: 0 0 8px #ff8c42; }
+    .flag-box { background: #0b1c2e; border: 2px dashed #ffb347; padding: 0.9rem; border-radius: 20px; text-align: center; font-weight: bold; font-size: 1.4rem; letter-spacing: 3px; color: #ffc164; animation: pulse 1.7s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 5px #ff9900; } 50% { box-shadow: 0 0 28px #ff8800; } 100% { box-shadow: 0 0 5px #ff9900; } }
+    .success-msg { color: #9effb7; font-weight: bold; }
+    .toast { position: fixed; top: 20px; right: 20px; background: #1a2a1a; border: 1px solid #f07b3b; padding: 1rem 1.5rem; border-radius: 2rem; color: #ffc164; font-weight: bold; z-index: 9999; animation: slideIn 0.3s ease, fadeOut 0.3s 2.5s forwards; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes fadeOut { to { opacity: 0; transform: translateY(-10px); } }
+    code { background: #0d1a26; padding: 0.2rem 0.6rem; border-radius: 12px; font-family: 'Fira Code', monospace; }
+    .timeline-bar { display: flex; align-items: center; gap: 2px; margin: 0.5rem 0; height: 40px; background: #020b17; border-radius: 8px; padding: 4px; border: 1px solid #2a3d59; }
+    .timeline-event { height: 100%; border-radius: 3px; transition: 0.3s; cursor: pointer; }
+    .timeline-event:hover::after { content: attr(data-tooltip); position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%); background: #0a1422; border: 1px solid #ff8c42; padding: 0.3rem 0.6rem; border-radius: 12px; font-size: 0.7rem; white-space: nowrap; z-index: 10; color: #ffc164; }
+  </style>
+</head>
+<body>
+<div class="container" id="appContainer">
+
+  <div id="loginSection">
+    <h1>📁 DATA STAGING HUNT</h1>
+    <div class="subtitle">Sysmon Event 11 · File creation staging detection</div>
+    <div class="panel">
+      <div style="text-align:center;">
+        <input type="text" id="studentNameInput" placeholder="Enter your name" autocomplete="off" style="width:70%;">
+        <input type="password" id="studentPassInput" placeholder="Enter password" style="width:70%; margin-top:0.7rem;">
+        <button id="studentSubmitLogin" style="margin-top:0.8rem;">🔐 Enter CTF Lab</button>
+        <p style="font-size:0.8rem; color:#8da0c0; margin-top:0.5rem;">
+          Password: <code>45_2026</code>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div id="studentDashboard" class="hidden">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 style="color:#ffa85c;">👤 <span id="displayStudentName"></span></h2>
+      <button id="logoutStudentBtn">🚪 Logout</button>
+    </div>
+    <div id="taskContainer"></div>
+  </div>
+
+</div>
+
+<script>
+(function() {
+    const FIXED_PASSWORD = '45_2026';
+    const STORAGE_KEY = 'staging_ctf_progress';
+    
+    let currentUser = null;
+    let completedTasks = [];
+
+    function loadProgress() {
+        try { const s=localStorage.getItem(STORAGE_KEY); if(s){const d=JSON.parse(s); completedTasks=d.completed||[]; return d.name; } } catch(e) {}
+        return null;
+    }
+    function saveProgress() { if(currentUser) localStorage.setItem(STORAGE_KEY, JSON.stringify({name:currentUser.name, completed:currentUser.completedTasks})); }
+
+    const tasks = [
+      { id: 1, title: "🎯 Task 1: Hunting Hypothesis", desc: "What is the attacker's goal when copying many files into a single folder before exfiltration? (two words)", answer: "data staging" },
+      { id: 2, title: "📂 Task 2: Identify Staging Folder", desc: "Find the staging folder path used by attacker.", answer: "C:\\Users\\Public\\staging", extra: "logs" },
+      { id: 3, title: "🔢 Task 3: Count File Creations", desc: "How many files were created in 10 minutes?", answer: "62", extra: "count" },
+      { id: 4, title: "🗜️ Task 4: Compression Tool", desc: "Which compression tool was used?", answer: "7z.exe", extra: "compress" },
+      { id: 5, title: "🌐 Task 5: Post-Staging Indicator", desc: "What to look for after staging? (three words)", answer: "large outbound connection" }
+    ];
+
+    const sysmonLogs = [
+      "Event 11: FileCreate | C:\\Users\\Public\\staging\\report_Q1.docx",
+      "Event 11: FileCreate | C:\\Users\\Public\\staging\\customers.db",
+      "Event 11: FileCreate | C:\\Users\\Public\\staging\\finances.xlsx",
+      "Event 11: FileCreate | C:\\Users\\Public\\staging\\secrets.txt",
+      "Event 11: FileCreate | C:\\Users\\Public\\staging\\credentials.xlsx",
+      "Event 11: FileCreate | C:\\Users\\Public\\staging\\api_keys.txt",
+      "Event 11: FileCreate | C:\\Users\\Public\\staging\\ssh_private.key"
+    ];
+    const compressionLog = 'Process Create: "C:\\Program Files\\7-Zip\\7z.exe" a -pSecret123 C:\\Users\\Public\\staging\\archive.7z C:\\Users\\Public\\staging\\*';
+
+    function showToast(m, e) {
+      const x=document.querySelector('.toast'); if(x)x.remove();
+      const t=document.createElement('div'); t.className='toast';
+      t.style.background=e?'#3a1a1a':'#1a2a1a'; t.style.borderColor=e?'#aa3030':'#f07b3b';
+      t.style.color=e?'#ffaaaa':'#ffc164'; t.textContent=m;
+      document.body.appendChild(t); setTimeout(()=>{if(t.parentNode)t.remove();},3000);
+    }
+
+    function renderTasks() {
+      if(!currentUser) return;
+      document.getElementById('displayStudentName').innerText=currentUser.name;
+      const c=document.getElementById('taskContainer'), done=currentUser.completedTasks||[];
+      let h='<h3>📊 File Creation Timeline & Heatmap</h3>';
+      h+='<div class="heatmap-grid">';
+      for(let i=0;i<62;i++){ const ri=Math.floor(Math.random()*60+40); h+=`<div class="heat-cell" style="background:rgb(${200+ri},${80+ri},25);" title="File #${i+1}"></div>`; }
+      h+='</div><p style="font-size:0.75rem;color:#8da0c0;">▲ Heatmap: 62 file creations</p>';
+      h+='<div class="timeline-bar">';
+      for(let i=0;i<62;i++){ h+=`<div class="timeline-event" data-tooltip="File #${i+1}" style="width:${100/62}%;height:${Math.floor(Math.random()*60+40)}%;background:rgb(255,${100+Math.floor(Math.random()*80)},30);"></div>`; }
+      h+='</div><p style="font-size:0.75rem;color:#8da0c0;margin-bottom:1rem;">⏱️ Timeline of file creations</p>';
+      tasks.forEach(t=>{
+        const dn=done.includes(t.id);
+        h+=`<div class="task-card" style="border-left-color:${dn?'#2ecc71':'#ff8c42'};"><strong>${t.title}</strong> <span class="badge">${dn?'✅ Done':'🔒 Pending'}</span><p>${t.desc}</p>`;
+        if(t.extra==='logs'){ sysmonLogs.forEach(l=>h+=`<div class="log-line">${l}</div>`); h+='<div class="log-line">... (55 more in staging)</div>'; }
+        else if(t.extra==='count') h+=`<div class="log-line">🔢 Total: <b style="color:#ff8c42;">62</b> files</div>`;
+        else if(t.extra==='compress') h+=`<div class="log-line" style="border-left:3px solid #ff8c42;">${compressionLog}</div>`;
+        if(!dn) h+=`<div style="display:flex;gap:0.5rem;margin-top:0.5rem;"><input type="text" id="ai${t.id}" placeholder="Your answer" style="flex:1;"><button onclick="window.submitT(${t.id})">✅ Submit</button></div>`;
+        else h+='<p class="success-msg">✔ Completed</p>';
+        h+='</div>';
+      });
+      if(done.length===tasks.length) h+='<div class="flag-box">🏁 FLAG{DATA_STAGING_FOUND} 🏁</div>';
+      c.innerHTML=h;
+    }
+
+    window.submitT = id => {
+      if(!currentUser) return;
+      const inp=document.getElementById('ai'+id); if(!inp) return;
+      const a=inp.value.trim(), t=tasks.find(x=>x.id===id); if(!t) return;
+      if(a.toLowerCase()===t.answer.toLowerCase()){
+        if(!currentUser.completedTasks.includes(id)){currentUser.completedTasks.push(id);saveProgress();}
+        showToast('✅ Correct!'); renderTasks();
+      } else { showToast('❌ Incorrect.',true); inp.style.animation='shake 0.5s ease'; setTimeout(()=>inp.style.animation='',500); }
+    };
+
+    function showLogin() { document.getElementById('loginSection').classList.remove('hidden'); document.getElementById('studentDashboard').classList.add('hidden'); currentUser=null; }
+    function showDash() { document.getElementById('loginSection').classList.add('hidden'); document.getElementById('studentDashboard').classList.remove('hidden'); renderTasks(); }
+
+    document.addEventListener('DOMContentLoaded',()=>{
+      const sn=loadProgress(); if(sn) document.getElementById('studentNameInput').value=sn;
+      document.getElementById('studentSubmitLogin').addEventListener('click',()=>{
+        const n=document.getElementById('studentNameInput').value.trim();
+        const p=document.getElementById('studentPassInput').value.trim();
+        if(!n||!p){showToast('Enter name and password.',true);return;}
+        if(p!==FIXED_PASSWORD){showToast('Invalid password. Use: 45_2026',true);return;}
+        currentUser={name:n,completedTasks:[...completedTasks]};
+        document.getElementById('studentPassInput').value=''; showDash();
+      });
+      document.getElementById('logoutStudentBtn').addEventListener('click',()=>{showToast('Logged out.');showLogin();});
+      const s=document.createElement('style'); s.textContent='@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-10px)}75%{transform:translateX(10px)}}';
+      document.head.appendChild(s); showLogin();
+    });
+})();
+</script>
+</body>
+</html>
